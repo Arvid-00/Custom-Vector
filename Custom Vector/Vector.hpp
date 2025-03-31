@@ -6,7 +6,6 @@
 #include <iostream>
 #include <new>
 #include <cstdlib>
-#include "Dalloc.hpp"
 
 #define CHECK assert(Invariant());
 
@@ -15,14 +14,15 @@ template <class CT, int DIR>
 class VectorIt;
 
 
-template<class T>
+template<class T, class Allocator = std::allocator<T>>
 class Vector {
 private:
 	size_t _size;
 	size_t _capacity;
 	T* _data = nullptr;
 
-	Dalloc<T> _dAlloc;
+	Allocator alloc;
+	//Dalloc<T> _dAlloc;
 
 public:
 	using value_type = T;
@@ -53,7 +53,7 @@ public:
 			return; 
 		}
 
-		_data = _dAlloc.allocate(_capacity);
+		_data = alloc.allocate(_capacity);
 
 		try 
 		{
@@ -65,7 +65,7 @@ public:
 		{
 			for (_size; _size > 0;)
 				_data[--_size].~T();
-			_dAlloc.deallocate(_data, _capacity);
+			alloc.deallocate(_data, _capacity);
 			throw;
 
 		}
@@ -73,30 +73,10 @@ public:
 
 	Vector(const char* other) : Vector(std::strlen(other), other, other + std::strlen(other))
 	{
-		//default
-		/*
-		_size = 0;
-		_capacity = strlen(other);
-		_data = new T[_capacity];
-		for (int i = 0; i < strlen(other); i++)
-		{
-			_data[i] = other[i];
-			_size++;
-		}
-		*/
 	}
 
 	Vector(const Vector& other) : Vector(other.size(), other.begin(), other.end())
 	{
-		//default
-		/*
-		_capacity = other.capacity();
-		_data = new T[_capacity];
-		for (_size = 0; _size < _capacity; _size++) 
-		{
-			_data[_size] = other._data[_size];
-		}
-		*/
 	}
 
 	Vector& operator=(const Vector& other) 
@@ -106,7 +86,7 @@ public:
 		{
 			size_t oldCap = _capacity;
 			size_t oldSize = _size; 
-			T* temp = _dAlloc.allocate(_capacity); //insert current data into this temp pointer, an excepetion is caught empty current data and replace with temp
+			T* temp = alloc.allocate(_capacity); 
 			
 			size_t i = 0;
 			try 
@@ -118,7 +98,7 @@ public:
 			{
 				for (i; i > 0;)
 					temp[i].~T();
-				_dAlloc.deallocate(temp, _capacity);
+				alloc.deallocate(temp, _capacity);
 				return *this;
 			}
 			
@@ -138,7 +118,7 @@ public:
 			{
 				for (_size; _size > 0;)
 					_data[--_size].~T();
-				_dAlloc.deallocate(_data, _capacity);
+				alloc.deallocate(_data, _capacity);
 
 				_data = temp; 
 
@@ -147,7 +127,7 @@ public:
 			}
 			for (size_t i = 0; i < oldSize; i++)
 				temp[i].~T();
-			_dAlloc.deallocate(temp, oldCap);
+			alloc.deallocate(temp, oldCap);
 
 			
 			return *this;
@@ -233,23 +213,18 @@ public:
 	{
 		if (size() >= capacity())
 		{
-			reAllocateRawData(capacity() * 2 + 1);//increase capacity + for variables with 0 size 
+			reAllocateRawData(capacity() * 2 + 1);
 
 		}
 
-		//raw
 		try
 		{
 			new(_data + _size++) T(c);
-			//_size++;
 		}
 		catch (...) 
 		{
 			_data[--_size].~T();
 		}
-
-		//default
-		//_data[_size++] = c;
 		
 	}
 	void pop_back() noexcept 
@@ -263,7 +238,7 @@ public:
 		_capacity = newCap;
 		size_t counter;
 		
-		T* temp = _dAlloc.allocate(newCap);
+		T* temp = alloc.allocate(newCap);
 
 		try 
 		{
@@ -276,13 +251,13 @@ public:
 		{
 			for (counter; counter > 0;)
 				temp[--counter].~T();
-			_dAlloc.deallocate(temp, newCap);
+			alloc.deallocate(temp, newCap);
 			 
 		}
 
 		for (size_t i = 0; i < _size; i++)
 			_data[i].~T();
-		_dAlloc.deallocate(_data, oldCap);
+		alloc.deallocate(_data, oldCap);
 		_data = temp;
 		
 	}
@@ -292,39 +267,20 @@ public:
 	{
 		size_t oldCap = _capacity;
 		_capacity = newCap;
-		//raw malloc
-		// T* temp = static_cast<T*>(malloc(newCap * sizeof(T)));
-		//raw dalloc
-		T* temp = _dAlloc.allocate(newCap);
+
+		T* temp = alloc.allocate(newCap);
 
 		for (size_t i = 0; i < _size; i++)
 		{
 			new(temp + i) T(*(_data + i));
-			//std::cout << temp << std::endl;
 		}
 		for (size_t i = 0; i < _size; i++)
 			_data[i].~T();
-		_dAlloc.deallocate(_data, oldCap);
-		//raw  malloc 
-		//free(_data);
+		alloc.deallocate(_data, oldCap);
 		_data = temp;
-
-
-		//defualt
-		/*
-		T* temp = new T[_capacity];
-		for (int i = 0; i < size(); i++) 
-		{
-			temp[i] = _data[i];
-		}
-		delete[] _data;
-		_data = temp;
-		*/
 	}
 	void reserve(size_t n)
 	{
-		//if (n < capacity())
-			//return false; // throw std::out_of_range("N is smaller than capacity");
 		if(n > capacity())
 		{
 			reAllocateRawData(n);
@@ -333,7 +289,6 @@ public:
 	}
 	void shrink_to_fit() 
 	{
-		//check if nessecary
 		if(_capacity > _size)
 			reAllocateRawData(size());
 	}
@@ -345,16 +300,12 @@ public:
 		if (n > capacity())
 			reAllocateRawData(n);
 
-		//std::cout << "n: " << n << "capacity: " << capacity() << "size: " << size() << "s: " << s << std::endl;
 		if (n > size()) {
 			try 
 			{
 				for (_size; _size < n; _size++)
 				{
-					//raw
 					new(_data + _size) T();
-					//default
-					//_data[_size] = T();
 				}
 			}
 			catch (...) 
@@ -366,26 +317,15 @@ public:
 		}
 		else 
 		{
-			//std::cout << "n: " << n << "capacity: " << capacity() << "size: " << size() << "s: " << s << std::endl;
 			for (_size; _size > n;)
 				_data[--_size].~T();
-			//std::cout << "n: " << n << "capacity: " << capacity() << "size: " << size() << "s: " << s << std::endl;
 		}
 	}
 	~Vector() noexcept
 	{
-		//default
-		//delete[] _data;
-
-		//raw malloc
-		//for (size_t i = 0; i < _size; i++)
-			//_data[i].~T();
-		//free(_data);
-
-		//raw dalloc
 		for (size_t i = 0; i < _size; i++)
 			_data[i].~T();
-		_dAlloc.deallocate(_data, _capacity);
+		alloc.deallocate(_data, _capacity);
 	}
 
 	friend bool operator==(const Vector& lhs, const Vector& rhs)
@@ -445,11 +385,11 @@ public:
 
 	reverse_iterator rbegin() noexcept 
 	{
-		return reverse_iterator(_data + _size - 1);//_data + _size - 1?
+		return reverse_iterator(_data + _size - 1);
 	}
 	reverse_iterator rend() noexcept
 	{
-		return reverse_iterator(_data - 1);//_data - 1?
+		return reverse_iterator(_data - 1);
 	}
 
 	const_iterator begin() const noexcept
@@ -529,7 +469,7 @@ public:
 	VectorIt operator++(int)
 	{
 		VectorIt iterator = *this;
-		_ptr += DIR; // ++(*this);
+		_ptr += DIR; 
 		return iterator;
 	}
 	VectorIt& operator--()
@@ -540,7 +480,7 @@ public:
 	VectorIt operator--(int)
 	{
 		VectorIt iterator = *this;
-		_ptr -= DIR; // ++(*this);
+		_ptr -= DIR; 
 		return iterator;
 	}
 	VectorIt& operator+=(difference_type i)
@@ -560,12 +500,11 @@ public:
 	difference_type operator-(const VectorIt& other) const
 	{
 		return (_ptr - other._ptr) * DIR; 
-
 	}
 
 	friend bool operator==(const VectorIt& lhs, const VectorIt& rhs) 
 	{
-		return lhs._ptr == rhs._ptr; // Correct? maybe check content of pointers?
+		return lhs._ptr == rhs._ptr; 
 	}
 	friend bool operator!=(const VectorIt& lhs, const VectorIt& rhs) 
 	{
@@ -573,7 +512,6 @@ public:
 	}
 	friend bool operator<(const VectorIt& lhs, const VectorIt& rhs) 
 	{
-		//currently checking difference, but maybe incorrect? 
 		if (lhs - rhs < 0)
 			return true;
 
